@@ -42,7 +42,7 @@ char* compute_digest (const char *filename) {
 	size_t i;
 	ssize_t count;
 	int fd;
-	struct stat stat_data;
+	struct stat64 stat_data;
 	int ret;
 
 	/* Compute the digest of the file */
@@ -55,7 +55,7 @@ char* compute_digest (const char *filename) {
 	}
 
 	/* Check what's the file's prefered I/O size */
-	ret = fstat(fd, &stat_data);
+	ret = fstat64(fd, &stat_data);
 	if (ret != -1) {
 		buffer_size = stat_data.st_blksize;
 	}
