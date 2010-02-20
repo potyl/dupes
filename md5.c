@@ -9,41 +9,56 @@
 #include <openssl/md5.h>
 
 static
-char* compute_digest (const char *filename);
+char* compute_digest (const char *filename, size_t buffer_size);
 
 
-int main (int argc, char *argv[]) {
-	char *digest;
-	char *filename;
+int main (int argc, char *argv[]) {	char *digest;
+	size_t i;
 
 	if (argc < 2) {
 		printf("Usage: file\n");
 		return 1;
 	}
-	filename = argv[1];
 
-	digest = compute_digest(filename);
+	for (i = 1; i < argc; ++i) {
+		char *digest;
+		struct stat64 stat_data;
+		char *filename = argv[i];
+		int result;
 
-	printf("%s\n", digest);
-	if (digest) {free(digest);}
+		/* Check what's the file's prefered I/O size */
+		stat64(filename, &stat_data);
+		result = stat64(filename, &stat_data);
+		if (result == -1) {
+			printf("Failed to get stat information for %s\n", filename);
+			continue;
+		}
+		else if (! S_ISREG(stat_data.st_mode)) {
+			printf("Entry %s is not a file\n", filename);
+			continue;
+		}
+
+		digest = compute_digest(filename, stat_data.st_blksize);
+		if (digest) {
+			printf("%MD% (%s) = %s\n", filename, digest);
+			free(digest);
+		}
+	}
 
 	return 0;
 }
 
 
 static
-char* compute_digest (const char *filename) {
+char* compute_digest (const char *filename, size_t buffer_size) {
 	MD5_CTX digest_ctx;
 	unsigned char digest[MD5_DIGEST_LENGTH];
 	char *digest_hex;
 	char *digest_ptr;
 	char *buffer;
-	size_t buffer_size;
 	size_t i;
 	ssize_t count;
 	int fd;
-	struct stat64 stat_data;
-	int ret;
 
 	/* Compute the digest of the file */
 	MD5_Init(&digest_ctx);
@@ -54,16 +69,7 @@ char* compute_digest (const char *filename) {
 		return NULL;
 	}
 
-	/* Check what's the file's prefered I/O size */
-	ret = fstat64(fd, &stat_data);
-	if (ret != -1) {
-		buffer_size = stat_data.st_blksize;
-	}
-	else {
-		buffer_size = 4096;
-	}
 	buffer = malloc(buffer_size);
-
 	while ( (count = read(fd, buffer, buffer_size)) > 0 ) {
 		MD5_Update(&digest_ctx, buffer, count);
 	}
