@@ -20,16 +20,16 @@ int main (int argc, char *argv[]) {
 
 static
 char* compute_digest (const char *filename) {
-	MD5_CTX md5_ctx;
+	MD5_CTX digest_ctx;
 	unsigned char digest[MD5_DIGEST_LENGTH];
 	char *digest_hex;
 	char *buffer;
 	size_t i;
 
 	/* Compute the digest */
-	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, "1", 1);
-	MD5_Final(digest, &md5_ctx);
+	MD5_Init(&digest_ctx);
+	MD5_Update(&digest_ctx, "1", 1);
+	MD5_Final(digest, &digest_ctx);
 
 	/* Transform the binary digest into a human readable string */
 	digest_hex = (char *) malloc(sizeof(char) * (sizeof(digest) * 2 + 1));
