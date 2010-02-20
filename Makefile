@@ -4,3 +4,7 @@ LIBS=`pkg-config --libs openssl --cflags`
 md5: md5.c
 	$(CC) $(LIBS) $ -o $@ $<
 
+
+.PHONY: clean
+clean:
+	rm -f md5
