@@ -13,8 +13,15 @@ char* compute_digest (const char *filename);
 
 int main (int argc, char *argv[]) {
 	char *digest;
+	char *filename;
 
-	digest = compute_digest("md5.c");
+	if (argc < 2) {
+		printf("Usage: file\n");
+		return 1;
+	}
+	filename = argv[1];
+
+	digest = compute_digest(filename);
 
 	printf("%s\n", digest);
 	if (digest) {free(digest);}
