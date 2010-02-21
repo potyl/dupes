@@ -13,23 +13,53 @@
 #include <sys/uio.h>
 
 #include <openssl/md5.h>
+#include <sqlite3.h>
+
+#define DB_FILE "dupes.db"
+#define IS_SQL_ERROR(error) ((error) == SQLITE_ERROR)
+
+struct _DupesCtx {
+	sqlite3 *db;
+	sqlite3_stmt *stmt_insert;
+};
+
+typedef struct _DupesCtx DupesCtx;
 
 
 /* Prototypes */
 static
-void dupes_walk_folder (const char *dirname);
+int dupes_ctx_init (DupesCtx *ctx);
+
+static
+void dupes_ctx_finalize (DupesCtx *ctx);
+
+static
+void dupes_walk_folder (DupesCtx *ctx, const char *dirname);
 
 static
 char* dupes_compute_digest (const char *filename);
 
+static
+void dupes_insert_digest (DupesCtx *ctx, const char *filename);
+
+
 
 int main (int argc, char *argv[]) {	char *digest;
 	size_t i;
+	DupesCtx ctx = {0, };
+	int rc;
 
 	if (argc < 2) {
 		printf("Usage: file\n");
 		return 1;
 	}
+
+
+	rc = dupes_ctx_init(&ctx);
+	if (rc) {
+		goto quit;
+	}
+
 
 	for (i = 1; i < argc; ++i) {
 		char *path = argv[i];
@@ -43,23 +73,86 @@ int main (int argc, char *argv[]) {	char *digest;
 			continue;
 		}
 		else if (S_ISDIR(stat_data.st_mode)) {
-			dupes_walk_folder(path);
+			dupes_walk_folder(&ctx, path);
 		}
 		else if (S_ISREG(stat_data.st_mode)) {
-			char *digest = dupes_compute_digest(path);
-			if (digest) {
-				printf("MD5 (%s) = %s\n", path, digest);
-				free(digest);
-			}
+			dupes_insert_digest(&ctx, path);
 		}
 	}
+
+quit:
+	dupes_ctx_finalize(&ctx);
 
 	return 0;
 }
 
 
+
 static
-void dupes_walk_folder (const char *dirname) {
+int dupes_ctx_init (DupesCtx *ctx) {
+	int error;
+	char *sql;
+	char *error_str;
+
+
+	error = sqlite3_open_v2(DB_FILE, &ctx->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+	if (IS_SQL_ERROR(error)) {
+		printf("Can't open database: %s\n", DB_FILE);
+		return 1;
+	}
+
+
+	sql = "PRAGMA synchronous=OFF; PRAGMA count_changes=OFF;";
+	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
+	if (error_str != NULL) {
+		printf("Failed to create the dubes table; error: %s", error_str);
+		sqlite3_free(error_str);
+		return 1;
+	}
+
+
+	sql = "CREATE TABLE IF NOT EXISTS dupes ("
+		"  id     INTEGER PRIMARY KEY NOT NULL, "
+		"  path   TEXT NOT NULL UNIQUE,"
+		"  digest TEXT NOT NULL"
+		");";
+	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
+	if (error_str != NULL) {
+		printf("Failed to create the dubes table; error code: %d %s", error_str);
+		sqlite3_free(error_str);
+		return 1;
+	}
+
+
+	sql = "REPLACE INTO dupes (path, digest) VALUES (?, ?)";
+	error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
+	if (IS_SQL_ERROR(error)) {
+		printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+		return 1;
+	}
+
+
+	return 0;
+}
+
+
+
+static
+void dupes_ctx_finalize (DupesCtx *ctx) {
+	if (ctx->stmt_insert != NULL) {
+		sqlite3_finalize(ctx->stmt_insert);
+		ctx->stmt_insert = NULL;
+	}
+
+	if (ctx->db != NULL) {
+		sqlite3_close(ctx->db);
+		ctx->db = NULL;
+	}
+}
+
+
+static
+void dupes_walk_folder (DupesCtx *ctx, const char *dirname) {
 	DIR *handle;
 	struct dirent *entry;
 	char path[MAXPATHLEN];
@@ -93,16 +186,11 @@ void dupes_walk_folder (const char *dirname) {
 
 		switch (entry->d_type) {
 			case DT_DIR:
-				dupes_walk_folder(path);
+				dupes_walk_folder(ctx, path);
 			break;
 
-			case DT_REG: {
-				char *digest = dupes_compute_digest(path);
-				if (digest) {
-					printf("MD5 (%s) = %s\n", path, digest);
-					free(digest);
-				}
-			}
+			case DT_REG:
+				dupes_insert_digest(ctx, path);
 			break;
 
 			default:
@@ -112,6 +200,48 @@ void dupes_walk_folder (const char *dirname) {
 
 	}
 	closedir(handle);
+}
+
+
+
+static
+void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
+	char *digest = NULL;
+	int rc;
+
+	/* Compute the digest */
+	digest = dupes_compute_digest(filename);
+	if (digest == NULL) {return;}
+
+
+	sqlite3_reset(ctx->stmt_insert);
+
+
+	/* Parameter binding */
+	rc = sqlite3_bind_text(ctx->stmt_insert, 1, filename, -1, SQLITE_STATIC);
+	if (IS_SQL_ERROR(rc)) {
+		printf("Failed to bind parameter path: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
+		goto quit;
+	}
+
+	rc = sqlite3_bind_text(ctx->stmt_insert, 2, digest, -1, SQLITE_STATIC);
+	if (IS_SQL_ERROR(rc)) {
+		printf("Failed to bind parameter digest: %s; error: %d, %s\n", digest, rc, sqlite3_errmsg(ctx->db));
+		goto quit;
+	}
+
+	printf("MD5 (%s) = %s\n", filename, digest);
+
+	/* Query execution */
+	rc = sqlite3_step(ctx->stmt_insert);
+	if (rc != SQLITE_DONE) {
+		printf("Failed to insert digest: %s, path: %s; error: %d, %s\n", digest, filename, rc, sqlite3_errmsg(ctx->db));
+		goto quit;
+	}
+
+
+quit:
+	if (digest) {free(digest);}
 }
 
 
