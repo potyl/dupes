@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -119,7 +121,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		");";
 	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
 	if (error_str != NULL) {
-		printf("Failed to create the dubes table; error code: %d %s", error_str);
+		printf("Failed to create the dubes table; error code: %s", error_str);
 		sqlite3_free(error_str);
 		return 1;
 	}
@@ -165,25 +167,23 @@ void dupes_walk_folder (DupesCtx *ctx, const char *dirname) {
 		return;
 	}
 
-	offset += strlcpy(path_ptr, dirname, sizeof(path) - offset);
+	strncpy(path_ptr, dirname, sizeof(path) - offset);
+	offset += strlen(path_ptr);
 	path_ptr = &path[offset];
 
 	if (path[offset - 1] != '/') {
-		offset += strlcpy(path_ptr, "/", sizeof(path) - offset);
+		strncpy(path_ptr, "/", sizeof(path) - offset);
+		offset += strlen(path_ptr);
 		path_ptr = &path[offset];
 	}
 
 	while ( (entry = readdir(handle)) != NULL ) {
-
 		/* Ignore "." and ".." */
-		if (entry->d_namlen == 1 && entry->d_name[0] == '.') {
-			continue;
-		}
-		else if (entry->d_namlen == 2 && entry->d_name[0] == '.' && entry->d_name[1] == '.') {
+		if (strcmp(entry->d_name, ".") == 0 || (strcmp(entry->d_name, "..") == 0)) {
 			continue;
 		}
 
-		strlcpy(path_ptr, entry->d_name, sizeof(path) - offset);
+		strncpy(path_ptr, entry->d_name, sizeof(path) - offset);
 
 		switch (entry->d_type) {
 			case DT_DIR:
