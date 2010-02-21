@@ -37,7 +37,7 @@ static
 void dupes_walk_folder (DupesCtx *ctx, const char *dirname);
 
 static
-char* dupes_compute_digest (const char *filename);
+char* dupes_compute_digest (const char *filename, size_t buffer_size);
 
 static
 void dupes_insert_digest (DupesCtx *ctx, const char *filename);
@@ -114,7 +114,8 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	sql = "CREATE TABLE IF NOT EXISTS dupes ("
 		"  id     INTEGER PRIMARY KEY NOT NULL, "
 		"  path   TEXT NOT NULL UNIQUE,"
-		"  digest TEXT NOT NULL"
+		"  digest TEXT NOT NULL,"
+		"  size   UNSIGNED INTEGER NOT NULL"
 		");";
 	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
 	if (error_str != NULL) {
@@ -124,7 +125,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	}
 
 
-	sql = "REPLACE INTO dupes (path, digest) VALUES (?, ?)";
+	sql = "REPLACE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
 	error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
 	if (IS_SQL_ERROR(error)) {
 		printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
@@ -208,9 +209,23 @@ static
 void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	char *digest = NULL;
 	int rc;
+	struct stat64 stat_data;
+	int result;
+
+
+	/* Check what's the file's prefered I/O size */
+	result = stat64(filename, &stat_data);
+	if (result == -1) {
+		printf("Failed to get stat information for %s\n", filename);
+		return;
+	}
+	else if (! S_ISREG(stat_data.st_mode)) {
+		printf("Entry %s is not a file\n", filename);
+		return;
+	}
 
 	/* Compute the digest */
-	digest = dupes_compute_digest(filename);
+	digest = dupes_compute_digest(filename, stat_data.st_blksize);
 	if (digest == NULL) {return;}
 
 
@@ -230,6 +245,13 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 		goto quit;
 	}
 
+	rc = sqlite3_bind_int(ctx->stmt_insert, 3, stat_data.st_size);
+	if (IS_SQL_ERROR(rc)) {
+		printf("Failed to bind parameter size: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
+		goto quit;
+	}
+
+
 	printf("MD5 (%s) = %s\n", filename, digest);
 
 	/* Query execution */
@@ -246,7 +268,7 @@ quit:
 
 
 static
-char* dupes_compute_digest (const char *filename) {
+char* dupes_compute_digest (const char *filename, size_t buffer_size) {
 	MD5_CTX digest_ctx;
 	unsigned char digest[MD5_DIGEST_LENGTH];
 	char *digest_hex;
@@ -255,21 +277,6 @@ char* dupes_compute_digest (const char *filename) {
 	size_t i;
 	ssize_t count;
 	int fd;
-	struct stat64 stat_data;
-	int result;
-
-
-	/* Check what's the file's prefered I/O size */
-	result = stat64(filename, &stat_data);
-	if (result == -1) {
-		printf("Failed to get stat information for %s\n", filename);
-		return NULL;
-	}
-	else if (! S_ISREG(stat_data.st_mode)) {
-		printf("Entry %s is not a file\n", filename);
-		return NULL;
-	}
-
 
 	/* Compute the digest of the file */
 	MD5_Init(&digest_ctx);
@@ -280,8 +287,8 @@ char* dupes_compute_digest (const char *filename) {
 		return NULL;
 	}
 
-	buffer = malloc(stat_data.st_blksize);
-	while ( (count = read(fd, buffer, stat_data.st_blksize)) > 0 ) {
+	buffer = malloc(buffer_size);
+	while ( (count = read(fd, buffer, buffer_size)) > 0 ) {
 		MD5_Update(&digest_ctx, buffer, count);
 	}
 	close(fd);
