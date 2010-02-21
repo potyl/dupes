@@ -1,0 +1,4 @@
+dupes is a program that computes the digest (currently MD5) of files and stores
+them in a SQLite 3 database. This database can then later be queried for finding
+duplicates.
+
