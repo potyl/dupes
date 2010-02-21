@@ -1,15 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
 #include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/uio.h>
 #include <unistd.h>
+#include <dirent.h>
+
+#include <sys/dir.h>
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/uio.h>
 
 #include <openssl/md5.h>
 
+
+/* Prototypes */
 static
-char* compute_digest (const char *filename, size_t buffer_size);
+void dupes_walk_folder (const char *dirname);
+
+static
+char* dupes_compute_digest (const char *filename);
 
 
 int main (int argc, char *argv[]) {	char *digest;
@@ -21,27 +32,25 @@ int main (int argc, char *argv[]) {	char *digest;
 	}
 
 	for (i = 1; i < argc; ++i) {
-		char *digest;
+		char *path = argv[i];
 		struct stat64 stat_data;
-		char *filename = argv[i];
 		int result;
 
-		/* Check what's the file's prefered I/O size */
-		stat64(filename, &stat_data);
-		result = stat64(filename, &stat_data);
+		/* Check what type of file entry is being processed */
+		result = stat64(path, &stat_data);
 		if (result == -1) {
-			printf("Failed to get stat information for %s\n", filename);
+			printf("Failed to get stat information for %s\n", path);
 			continue;
 		}
-		else if (! S_ISREG(stat_data.st_mode)) {
-			printf("Entry %s is not a file\n", filename);
-			continue;
+		else if (S_ISDIR(stat_data.st_mode)) {
+			dupes_walk_folder(path);
 		}
-
-		digest = compute_digest(filename, stat_data.st_blksize);
-		if (digest) {
-			printf("%MD% (%s) = %s\n", filename, digest);
-			free(digest);
+		else if (S_ISREG(stat_data.st_mode)) {
+			char *digest = dupes_compute_digest(path);
+			if (digest) {
+				printf("MD5 (%s) = %s\n", path, digest);
+				free(digest);
+			}
 		}
 	}
 
@@ -50,7 +59,64 @@ int main (int argc, char *argv[]) {	char *digest;
 
 
 static
-char* compute_digest (const char *filename, size_t buffer_size) {
+void dupes_walk_folder (const char *dirname) {
+	DIR *handle;
+	struct dirent *entry;
+	char path[MAXPATHLEN];
+	char *path_ptr = path;
+	size_t offset = 0;
+
+	handle = opendir(dirname);
+	if (handle == NULL) {
+		return;
+	}
+
+	offset += strlcpy(path_ptr, dirname, sizeof(path) - offset);
+	path_ptr = &path[offset];
+
+	if (path[offset - 1] != '/') {
+		offset += strlcpy(path_ptr, "/", sizeof(path) - offset);
+		path_ptr = &path[offset];
+	}
+
+	while ( (entry = readdir(handle)) != NULL ) {
+
+		/* Ignore "." and ".." */
+		if (entry->d_namlen == 1 && entry->d_name[0] == '.') {
+			continue;
+		}
+		else if (entry->d_namlen == 2 && entry->d_name[0] == '.' && entry->d_name[1] == '.') {
+			continue;
+		}
+
+		strlcpy(path_ptr, entry->d_name, sizeof(path) - offset);
+
+		switch (entry->d_type) {
+			case DT_DIR:
+				dupes_walk_folder(path);
+			break;
+
+			case DT_REG: {
+				char *digest = dupes_compute_digest(path);
+				if (digest) {
+					printf("MD5 (%s) = %s\n", path, digest);
+					free(digest);
+				}
+			}
+			break;
+
+			default:
+				printf("Skipping entry %s of file type id: %d\n", path, entry->d_type);
+			break;
+		}
+
+	}
+	closedir(handle);
+}
+
+
+static
+char* dupes_compute_digest (const char *filename) {
 	MD5_CTX digest_ctx;
 	unsigned char digest[MD5_DIGEST_LENGTH];
 	char *digest_hex;
@@ -59,6 +125,21 @@ char* compute_digest (const char *filename, size_t buffer_size) {
 	size_t i;
 	ssize_t count;
 	int fd;
+	struct stat64 stat_data;
+	int result;
+
+
+	/* Check what's the file's prefered I/O size */
+	result = stat64(filename, &stat_data);
+	if (result == -1) {
+		printf("Failed to get stat information for %s\n", filename);
+		return NULL;
+	}
+	else if (! S_ISREG(stat_data.st_mode)) {
+		printf("Entry %s is not a file\n", filename);
+		return NULL;
+	}
+
 
 	/* Compute the digest of the file */
 	MD5_Init(&digest_ctx);
@@ -69,8 +150,8 @@ char* compute_digest (const char *filename, size_t buffer_size) {
 		return NULL;
 	}
 
-	buffer = malloc(buffer_size);
-	while ( (count = read(fd, buffer, buffer_size)) > 0 ) {
+	buffer = malloc(stat_data.st_blksize);
+	while ( (count = read(fd, buffer, stat_data.st_blksize)) > 0 ) {
 		MD5_Update(&digest_ctx, buffer, count);
 	}
 	close(fd);
