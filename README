@@ -1,4 +1,35 @@
-dupes is a program that computes the digest (currently MD5) of files and stores
-them in a SQLite 3 database. This database can then later be queried for finding
-duplicates.
+Description
+===========
 
+dupes is an utility that can be used to find duplicate files. It does so by
+computing a digest (currently MD5) for each file and stores it in a SQLite3
+database.
+
+This database can later be queried for finding duplicate files.
+
+
+Building
+========
+
+This project uses autoconf & friends as its build toolchain. Building it should
+be trivial once the GNU autoconf toolchain is installed.
+
+If you have forked the code from github you will need to run the autoconf
+programs in order to prepare build toolchain:
+
+	autoreconf -vif
+
+Once the toolchain scripts are created simply build the program with:
+
+	./configure --prefix=/usr && make && sudo make install
+
+You should now be able to execute the program dupes!
+
+
+Usage
+=====
+
+The progam is started from the command line and takes its parameters from the
+command line. It expects to receive as input the files or folders to index.
+
+	dupes /etc
