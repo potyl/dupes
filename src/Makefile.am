@@ -1,4 +1,11 @@
+AM_CFLAGS = \
+	@OPENSSL_CFLAGS@ \
+	@SQLITE3_CFLAGS@
+
 bin_PROGRAMS = dupes
 
 dupes_SOURCES = dupes.c
 
+dupes_LDADD = \
+	@OPENSSL_LIBS@ \
+	@SQLITE3_LIBS@
