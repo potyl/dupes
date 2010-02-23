@@ -1,3 +1,4 @@
-#! /bin/sh
+#!/bin/sh
 
-aclocal && automake --add-missing && autoconf
+autoreconf -vif
+
