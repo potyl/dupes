@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <getopt.h>
 
 #include <sys/dir.h>
 #include <sys/param.h>
@@ -17,7 +18,9 @@
 #include <openssl/md5.h>
 #include <sqlite3.h>
 
-#define DB_FILE "dupes.db"
+#include "config.h"
+
+#define DB_FILE PACKAGE_NAME ".db"
 #define IS_SQL_ERROR(error) ((error) == SQLITE_ERROR)
 
 struct _DupesCtx {
@@ -44,16 +47,39 @@ char* dupes_compute_digest (const char *filename, size_t buffer_size);
 static
 void dupes_insert_digest (DupesCtx *ctx, const char *filename);
 
+static
+int dupes_usage (void);
 
 
 int main (int argc, char *argv[]) {	char *digest;
 	size_t i;
 	DupesCtx ctx = {0, };
 	int rc;
+	struct option longopts[] = {
+		{ "help",       no_argument,       NULL, 'h' },
+		{ "version",    no_argument,       NULL, 'v' },
+		{ NULL, 0, NULL, 0 },
+	};
+
+	while ( (rc = getopt_long(argc, argv, "hv", longopts, NULL)) != -1 ) {
+		switch (rc) {
+			case 'h':
+				return dupes_usage();
+			break;
+
+			case 'v':
+				printf("%s version %s\n", PACKAGE_NAME, PACKAGE_VERSION);
+				return 0;
+			break;
+		}
+	}
+	argc -= optind;
+	argv += optind;
+
+
 
 	if (argc < 2) {
-		printf("Usage: file\n");
-		return 1;
+		return dupes_usage();
 	}
 
 
@@ -305,4 +331,16 @@ char* dupes_compute_digest (const char *filename, size_t buffer_size) {
 	}
 
 	return digest_hex;
+}
+
+
+static
+int dupes_usage() {
+	printf(
+		"Usage: " PACKAGE_NAME " [OPTION]... SSID\n"
+		"Where OPTION is one of:\n"
+		"   --version,      -v     show the program's version\n"
+		"   --help,         -h     print this help message\n"
+	);
+	return 1;
 }
