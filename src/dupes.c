@@ -26,6 +26,8 @@
 struct _DupesCtx {
 	sqlite3 *db;
 	sqlite3_stmt *stmt_insert;
+	sqlite3_stmt *stmt_select;
+	int replace;
 };
 
 typedef struct _DupesCtx DupesCtx;
@@ -56,13 +58,18 @@ int main (int argc, char *argv[]) {	char *digest;
 	DupesCtx ctx = {0, };
 	int rc;
 	struct option longopts[] = {
+		{ "replace",    no_argument,       NULL, 'r' },
 		{ "help",       no_argument,       NULL, 'h' },
 		{ "version",    no_argument,       NULL, 'v' },
 		{ NULL, 0, NULL, 0 },
 	};
 
-	while ( (rc = getopt_long(argc, argv, "hv", longopts, NULL)) != -1 ) {
+	while ( (rc = getopt_long(argc, argv, "hvr", longopts, NULL)) != -1 ) {
 		switch (rc) {
+			case 'r':
+				ctx.replace = 1;
+			break;
+
 			case 'h':
 				return dupes_usage();
 			break;
@@ -88,7 +95,7 @@ int main (int argc, char *argv[]) {	char *digest;
 	}
 
 
-	for (i = 1; i < argc; ++i) {
+	for (i = 0; i < argc; ++i) {
 		char *path = argv[i];
 		struct stat64 stat_data;
 		int result;
@@ -151,14 +158,29 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		return 1;
 	}
 
-
-	sql = "REPLACE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
-	error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
-	if (IS_SQL_ERROR(error)) {
-		printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
-		return 1;
+	if (ctx->replace) {
+		sql = "INSERT OR REPLACE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
+		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
+		if (IS_SQL_ERROR(error)) {
+			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			return 1;
+		}
 	}
+	else {
+		sql = "INSERT OR IGNORE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
+		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
+		if (IS_SQL_ERROR(error)) {
+			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			return 1;
+		}
 
+		sql = "SELECT 1 FROM dupes WHERE path = ? LIMIT 1";
+		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
+		if (IS_SQL_ERROR(error)) {
+			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			return 1;
+		}
+	}
 
 	return 0;
 }
@@ -170,6 +192,11 @@ void dupes_ctx_finalize (DupesCtx *ctx) {
 	if (ctx->stmt_insert != NULL) {
 		sqlite3_finalize(ctx->stmt_insert);
 		ctx->stmt_insert = NULL;
+	}
+
+	if (ctx->stmt_select != NULL) {
+		sqlite3_finalize(ctx->stmt_select);
+		ctx->stmt_select = NULL;
 	}
 
 	if (ctx->db != NULL) {
@@ -236,6 +263,34 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	int rc;
 	struct stat64 stat_data;
 	int result;
+
+	/** If we don't replace existing values then we can avoid to compute the
+	    digest if we have it already in the DB */
+	if (! ctx->replace) {
+		sqlite3_reset(ctx->stmt_select);
+		rc = sqlite3_bind_text(ctx->stmt_select, 1, filename, -1, SQLITE_STATIC);
+		if (IS_SQL_ERROR(rc)) {
+			printf("Failed to bind parameter path: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
+			goto QUIT;
+		}
+
+		rc = sqlite3_step (ctx->stmt_select);
+		switch (rc) {
+			case SQLITE_ROW:
+				/* Record found */
+				goto QUIT;
+			break;
+
+			case SQLITE_DONE:
+        		/* Record not found (empty result set); we continue in the function */
+			break;
+
+			default:
+				printf("Failed to lookup record for file %s; error: %d, %s", filename, rc, sqlite3_errmsg(ctx->db));
+				goto QUIT;
+			break;
+		}
+	}
 
 
 	/* Check what's the file's prefered I/O size */
@@ -338,6 +393,7 @@ int dupes_usage() {
 	printf(
 		"Usage: " PACKAGE_NAME " [OPTION]... SSID\n"
 		"Where OPTION is one of:\n"
+		"   --replace,      -r     replace existing digest\n"
 		"   --version,      -v     show the program's version\n"
 		"   --help,         -h     print this help message\n"
 	);
