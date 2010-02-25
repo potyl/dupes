@@ -84,7 +84,7 @@ int main (int argc, char *argv[]) {	char *digest;
 
 	rc = dupes_ctx_init(&ctx);
 	if (rc) {
-		goto quit;
+		goto QUIT;
 	}
 
 
@@ -107,7 +107,7 @@ int main (int argc, char *argv[]) {	char *digest;
 		}
 	}
 
-quit:
+QUIT:
 	dupes_ctx_finalize(&ctx);
 
 	return 0;
@@ -261,19 +261,19 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	rc = sqlite3_bind_text(ctx->stmt_insert, 1, filename, -1, SQLITE_STATIC);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter path: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
-		goto quit;
+		goto QUIT;
 	}
 
 	rc = sqlite3_bind_text(ctx->stmt_insert, 2, digest, -1, SQLITE_STATIC);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter digest: %s; error: %d, %s\n", digest, rc, sqlite3_errmsg(ctx->db));
-		goto quit;
+		goto QUIT;
 	}
 
 	rc = sqlite3_bind_int(ctx->stmt_insert, 3, stat_data.st_size);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter size: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
-		goto quit;
+		goto QUIT;
 	}
 
 
@@ -283,11 +283,11 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	rc = sqlite3_step(ctx->stmt_insert);
 	if (rc != SQLITE_DONE) {
 		printf("Failed to insert digest: %s, path: %s; error: %d, %s\n", digest, filename, rc, sqlite3_errmsg(ctx->db));
-		goto quit;
+		goto QUIT;
 	}
 
 
-quit:
+QUIT:
 	if (digest) {free(digest);}
 }
 
