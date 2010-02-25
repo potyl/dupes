@@ -147,7 +147,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		");";
 	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
 	if (error_str != NULL) {
-		printf("Failed to create the dubes table; error code: %s", error_str);
+		printf("Failed to create the dupes table; error code: %s", error_str);
 		sqlite3_free(error_str);
 		return 1;
 	}
