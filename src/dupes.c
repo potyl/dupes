@@ -77,8 +77,7 @@ int main (int argc, char *argv[]) {	char *digest;
 	argv += optind;
 
 
-
-	if (argc < 2) {
+	if (argc == 0) {
 		return dupes_usage();
 	}
 
