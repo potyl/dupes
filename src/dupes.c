@@ -23,11 +23,13 @@
 #define DB_FILE PACKAGE_NAME ".db"
 #define IS_SQL_ERROR(error) ((error) == SQLITE_ERROR)
 
+
 struct _DupesCtx {
 	sqlite3 *db;
 	sqlite3_stmt *stmt_insert;
 	sqlite3_stmt *stmt_select;
 	int replace;
+	int show;
 };
 
 typedef struct _DupesCtx DupesCtx;
@@ -50,6 +52,9 @@ static
 void dupes_insert_digest (DupesCtx *ctx, const char *filename);
 
 static
+void dupes_show (DupesCtx *ctx);
+
+static
 int dupes_usage (void);
 
 
@@ -58,6 +63,7 @@ int main (int argc, char *argv[]) {	char *digest;
 	DupesCtx ctx = {0, };
 	int rc;
 	struct option longopts[] = {
+		{ "show",       no_argument,       NULL, 's' },
 		{ "replace",    no_argument,       NULL, 'r' },
 		{ "help",       no_argument,       NULL, 'h' },
 		{ "version",    no_argument,       NULL, 'v' },
@@ -68,6 +74,10 @@ int main (int argc, char *argv[]) {	char *digest;
 		switch (rc) {
 			case 'r':
 				ctx.replace = 1;
+			break;
+
+			case 's':
+				ctx.show = 1;
 			break;
 
 			case 'h':
@@ -83,14 +93,18 @@ int main (int argc, char *argv[]) {	char *digest;
 	argc -= optind;
 	argv += optind;
 
-
-	if (argc == 0) {
+	if (argc == 0 && ! ctx.show) {
 		return dupes_usage();
 	}
 
 
 	rc = dupes_ctx_init(&ctx);
 	if (rc) {
+		goto QUIT;
+	}
+
+	if (ctx.show) {
+		dupes_show(&ctx);
 		goto QUIT;
 	}
 
@@ -113,6 +127,7 @@ int main (int argc, char *argv[]) {	char *digest;
 			dupes_insert_digest(&ctx, path);
 		}
 	}
+
 
 QUIT:
 	dupes_ctx_finalize(&ctx);
@@ -156,6 +171,17 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		printf("Failed to create the dupes table; error code: %s", error_str);
 		sqlite3_free(error_str);
 		return 1;
+	}
+
+	if (ctx->show) {
+		sql = "SELECT digest, count(*) AS total FROM dupes GROUP BY digest HAVING total > 1 ORDER BY total DESC, digest ASC";
+		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
+		if (IS_SQL_ERROR(error)) {
+			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			return 1;
+		}
+
+		return 0;
 	}
 
 	if (ctx->replace) {
@@ -274,7 +300,7 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 			goto QUIT;
 		}
 
-		rc = sqlite3_step (ctx->stmt_select);
+		rc = sqlite3_step(ctx->stmt_select);
 		switch (rc) {
 			case SQLITE_ROW:
 				/* Record found */
@@ -385,6 +411,39 @@ char* dupes_compute_digest (const char *filename, size_t buffer_size) {
 	}
 
 	return digest_hex;
+}
+
+
+static
+void dupes_show (DupesCtx *ctx) {
+	int rc;
+	int done = 0;
+
+	sqlite3_reset(ctx->stmt_select);
+	while (! done) {
+		const unsigned char* digest;
+		int total;
+
+		rc = sqlite3_step(ctx->stmt_select);
+		switch (rc) {
+			case SQLITE_ROW:
+				/* Record found */
+				digest = sqlite3_column_text(ctx->stmt_select, 0);
+				total = sqlite3_column_int(ctx->stmt_select, 1);
+				printf("%s %d\n", digest, total);
+			break;
+
+			case SQLITE_DONE:
+				/* Record not found (empty result set); we continue in the function */
+				done = 1;
+			break;
+
+			default:
+				printf("Failed to execute SQL query for showing duplicates; error: %d, %s", rc, sqlite3_errmsg(ctx->db));
+				done = 1;
+			break;
+		}
+	}
 }
 
 
