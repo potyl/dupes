@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 
-AC_INIT(dupes, 0.0.1, http://github.com/potyl/dupes)
+AC_INIT(dupes, 0.0.2, http://github.com/potyl/dupes)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 
 AC_CONFIG_SRCDIR([src])
