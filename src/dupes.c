@@ -184,6 +184,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		return 0;
 	}
 
+
 	if (ctx->replace) {
 		sql = "INSERT OR REPLACE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
@@ -418,6 +419,7 @@ static
 void dupes_show (DupesCtx *ctx) {
 	int rc;
 	int done = 0;
+	int count = 0;
 
 	sqlite3_reset(ctx->stmt_select);
 	while (! done) {
@@ -431,10 +433,14 @@ void dupes_show (DupesCtx *ctx) {
 				digest = sqlite3_column_text(ctx->stmt_select, 0);
 				total = sqlite3_column_int(ctx->stmt_select, 1);
 				printf("%s %d\n", digest, total);
+				++count;
 			break;
 
 			case SQLITE_DONE:
-				/* Record not found (empty result set); we continue in the function */
+				/* No more records */
+				if (count == 0) {
+					printf("No duplicates found\n");
+				}
 				done = 1;
 			break;
 
