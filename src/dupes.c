@@ -70,7 +70,7 @@ int main (int argc, char *argv[]) {	char *digest;
 		{ NULL, 0, NULL, 0 },
 	};
 
-	while ( (rc = getopt_long(argc, argv, "hvr", longopts, NULL)) != -1 ) {
+	while ( (rc = getopt_long(argc, argv, "srhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
 			case 'r':
 				ctx.replace = 1;
