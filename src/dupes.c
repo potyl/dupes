@@ -458,6 +458,7 @@ int dupes_usage() {
 	printf(
 		"Usage: " PACKAGE_NAME " [OPTION]... SSID\n"
 		"Where OPTION is one of:\n"
+		"   --show,         -s     show digests with duplicates\n"
 		"   --replace,      -r     replace existing digest\n"
 		"   --version,      -v     show the program's version\n"
 		"   --help,         -h     print this help message\n"
