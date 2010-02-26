@@ -14,7 +14,7 @@ AC_PROG_MAKE_SET
 
 # Libraries
 PKG_CHECK_MODULES(OPENSSL, [openssl >= 0.9.8])
-PKG_CHECK_MODULES(SQLITE3, [sqlite3 >= 3.6.22])
+PKG_CHECK_MODULES(SQLITE3, [sqlite3 >= 3.6.16])
 
 
 # Make sure we keep ACLOCAL_FLAGS around for maintainer builds to work
