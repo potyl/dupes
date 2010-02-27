@@ -174,7 +174,15 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	}
 
 	if (ctx->show) {
-		sql = "SELECT digest, count(*) AS total FROM dupes GROUP BY digest HAVING total > 1 ORDER BY total DESC, digest ASC";
+		sql =
+			"SELECT "
+			"   total.total, "
+			"   dupes.digest, dupes.path, dupes.size "
+			"FROM dupes "
+			"INNER JOIN ( "
+			"  SELECT digest, count(*) AS total FROM dupes GROUP BY digest HAVING total > 1"
+			") AS total USING (digest) "
+			"ORDER BY total DESC, digest, path";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
 		if (IS_SQL_ERROR(error)) {
 			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
@@ -417,28 +425,41 @@ char* dupes_compute_digest (const char *filename, size_t buffer_size) {
 
 static
 void dupes_show (DupesCtx *ctx) {
-	int rc;
 	int done = 0;
-	int count = 0;
+	int rows = 0;
+	int total = 0;
 
 	sqlite3_reset(ctx->stmt_select);
 	while (! done) {
+		int rc;
 		const unsigned char* digest;
-		int total;
+		const unsigned char* path;
+		int size;
 
 		rc = sqlite3_step(ctx->stmt_select);
 		switch (rc) {
 			case SQLITE_ROW:
 				/* Record found */
-				digest = sqlite3_column_text(ctx->stmt_select, 0);
-				total = sqlite3_column_int(ctx->stmt_select, 1);
-				printf("%s %d\n", digest, total);
-				++count;
+
+				digest = sqlite3_column_text(ctx->stmt_select, 1);
+				if (total == 0) {
+					const unsigned char* digest;
+					total = sqlite3_column_int(ctx->stmt_select, 0);
+					digest = sqlite3_column_text(ctx->stmt_select, 1);
+
+					printf("%s (dupes: %d)\n", digest, total);
+				}
+
+				--total;
+				path = sqlite3_column_text(ctx->stmt_select, 2);
+				size = sqlite3_column_int(ctx->stmt_select, 3);
+				printf("%s %s %d\n", total ? "|-" : "`-", path, size);
+				++rows;
 			break;
 
 			case SQLITE_DONE:
 				/* No more records */
-				if (count == 0) {
+				if (rows == 0) {
 					printf("No duplicates found\n");
 				}
 				done = 1;
