@@ -49,6 +49,7 @@ struct _DupesCtx {
 	sqlite3_stmt *stmt_select;
 	int replace;
 	int show;
+	int keep_zero_size;
 };
 
 typedef struct _DupesCtx DupesCtx;
@@ -82,6 +83,7 @@ int main (int argc, char *argv[]) {	char *digest;
 	DupesCtx ctx = {0, };
 	int rc;
 	struct option longopts[] = {
+		{ "zero",       no_argument,       NULL, 'z' },
 		{ "show",       no_argument,       NULL, 's' },
 		{ "replace",    no_argument,       NULL, 'r' },
 		{ "help",       no_argument,       NULL, 'h' },
@@ -89,8 +91,12 @@ int main (int argc, char *argv[]) {	char *digest;
 		{ NULL, 0, NULL, 0 },
 	};
 
-	while ( (rc = getopt_long(argc, argv, "srhv", longopts, NULL)) != -1 ) {
+	while ( (rc = getopt_long(argc, argv, "srzhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
+			case 'z':
+				ctx.keep_zero_size = 1;
+			break;
+
 			case 'r':
 				ctx.replace = 1;
 			break;
@@ -325,14 +331,14 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 		rc = sqlite3_bind_text(ctx->stmt_select, 1, filename, -1, SQLITE_STATIC);
 		if (IS_SQL_ERROR(rc)) {
 			printf("Failed to bind parameter path: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
-			goto QUIT;
+			return;
 		}
 
 		rc = sqlite3_step(ctx->stmt_select);
 		switch (rc) {
 			case SQLITE_ROW:
 				/* Record found */
-				goto QUIT;
+				return;
 			break;
 
 			case SQLITE_DONE:
@@ -341,7 +347,7 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 
 			default:
 				printf("Failed to lookup record for file %s; error: %d, %s", filename, rc, sqlite3_errmsg(ctx->db));
-				goto QUIT;
+				return;
 			break;
 		}
 	}
@@ -355,6 +361,10 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	}
 	else if (! S_ISREG(stat_data.st_mode)) {
 		printf("Entry %s is not a file\n", filename);
+		return;
+	}
+	else if (!ctx->keep_zero_size && stat_data.st_size == 0) {
+		/* Zero size file */
 		return;
 	}
 
@@ -500,6 +510,7 @@ int dupes_usage() {
 		"Where OPTION is one of:\n"
 		"   --show,         -s     show digests with duplicates\n"
 		"   --replace,      -r     replace existing digest\n"
+		"   --zero,         -z     process empty files\n"
 		"   --version,      -v     show the program's version\n"
 		"   --help,         -h     print this help message\n"
 	);
