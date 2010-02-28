@@ -1,3 +1,7 @@
+0.0.4 Sun Apr 25 00:14:28 CEST 2010
+	- Add the option --zero which allows empty files to be indexed.
+	- Add the last modification time to each file.
+
 0.0.3 Sat Apr 24 14:08:55 CEST 20
 	- Fix the usage.
 	- autogen.sh is now working in OS X (ports uses a different aclocal folder).
