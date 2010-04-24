@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -185,11 +186,12 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	}
 
 
-	sql = "CREATE TABLE IF NOT EXISTS dupes ("
-		"  id     INTEGER PRIMARY KEY NOT NULL, "
-		"  path   TEXT NOT NULL UNIQUE,"
-		"  digest TEXT NOT NULL,"
-		"  size   UNSIGNED INTEGER NOT NULL"
+	sql = "CREATE TABLE IF NOT EXISTS dupes (\n"
+		"  id            INTEGER PRIMARY KEY NOT NULL,\n"
+		"  path          TEXT NOT NULL UNIQUE,\n"
+		"  digest        TEXT NOT NULL,\n"
+		"  size          UNSIGNED INTEGER NOT NULL,\n"
+		"  last_modified TEXT NOT NULL\n"
 		");";
 	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
 	if (error_str != NULL) {
@@ -219,7 +221,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 
 
 	if (ctx->replace) {
-		sql = "INSERT OR REPLACE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
+		sql = "INSERT OR REPLACE INTO dupes (path, digest, size, last_modified) VALUES (?, ?, ?, ?)";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
 		if (IS_SQL_ERROR(error)) {
 			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
@@ -227,7 +229,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		}
 	}
 	else {
-		sql = "INSERT OR IGNORE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
+		sql = "INSERT OR IGNORE INTO dupes (path, digest, size, last_modified) VALUES (?, ?, ?, ?)";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
 		if (IS_SQL_ERROR(error)) {
 			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
@@ -323,6 +325,8 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	int rc;
 	struct stat64 stat_data;
 	int result;
+	struct tm time_tm;
+	char last_modified[20];
 
 	/** If we don't replace existing values then we can avoid to compute the
 	    digest if we have it already in the DB */
@@ -368,6 +372,9 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 		return;
 	}
 
+	gmtime_r(&stat_data.st_mtimespec.tv_sec, &time_tm);
+	strftime(last_modified, sizeof(last_modified), "%Y-%m-%d %H:%M:%S", &time_tm);
+
 	/* Compute the digest */
 	digest = dupes_compute_digest(filename, stat_data.st_blksize);
 	if (digest == NULL) {return;}
@@ -392,6 +399,12 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	rc = sqlite3_bind_int(ctx->stmt_insert, 3, stat_data.st_size);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter size: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
+		goto QUIT;
+	}
+
+	rc = sqlite3_bind_text(ctx->stmt_insert, 4, last_modified, -1, SQLITE_STATIC);
+	if (IS_SQL_ERROR(rc)) {
+		printf("Failed to bind parameter last_modified: %s; error: %d, %s\n", last_modified, rc, sqlite3_errmsg(ctx->db));
 		goto QUIT;
 	}
 
