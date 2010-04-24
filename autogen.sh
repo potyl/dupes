@@ -1,4 +1,6 @@
 #!/bin/sh
 
-autoreconf -vif
-
+aclocal -I /opt/local/share/aclocal
+autoheader
+automake
+autoconf
