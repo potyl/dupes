@@ -179,7 +179,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	sql = "PRAGMA synchronous=OFF; PRAGMA count_changes=OFF;";
 	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
 	if (error_str != NULL) {
-		printf("Failed to create the dubes table; error: %s", error_str);
+		printf("Failed to create the dubes table; error: %s\n", error_str);
 		sqlite3_free(error_str);
 		return 1;
 	}
@@ -193,7 +193,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		");";
 	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
 	if (error_str != NULL) {
-		printf("Failed to create the dupes table; error code: %s", error_str);
+		printf("Failed to create the dupes table; error code: %s\n", error_str);
 		sqlite3_free(error_str);
 		return 1;
 	}
@@ -210,7 +210,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 			"ORDER BY total DESC, digest, path";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
 		if (IS_SQL_ERROR(error)) {
-			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
 			return 1;
 		}
 
@@ -222,7 +222,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		sql = "INSERT OR REPLACE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
 		if (IS_SQL_ERROR(error)) {
-			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
 			return 1;
 		}
 	}
@@ -230,14 +230,14 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		sql = "INSERT OR IGNORE INTO dupes (path, digest, size) VALUES (?, ?, ?)";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_insert, NULL);
 		if (IS_SQL_ERROR(error)) {
-			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
 			return 1;
 		}
 
 		sql = "SELECT 1 FROM dupes WHERE path = ? LIMIT 1";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
 		if (IS_SQL_ERROR(error)) {
-			printf("Can't prepare statement: %s; error code: %d %s", sql, error, sqlite3_errmsg(ctx->db));
+			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
 			return 1;
 		}
 	}
