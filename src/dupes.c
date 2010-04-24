@@ -496,7 +496,7 @@ void dupes_show (DupesCtx *ctx) {
 static
 int dupes_usage() {
 	printf(
-		"Usage: " PACKAGE_NAME " [OPTION]... SSID\n"
+		"Usage: " PACKAGE_NAME " [OPTION]... FOLDER... FILE...\n"
 		"Where OPTION is one of:\n"
 		"   --show,         -s     show digests with duplicates\n"
 		"   --replace,      -r     replace existing digest\n"
