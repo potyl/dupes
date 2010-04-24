@@ -204,12 +204,12 @@ int dupes_ctx_init (DupesCtx *ctx) {
 		sql =
 			"SELECT "
 			"   total.total, "
-			"   dupes.digest, dupes.path, dupes.size "
+			"   dupes.digest, dupes.path, last_modified, dupes.size "
 			"FROM dupes "
 			"INNER JOIN ( "
 			"  SELECT digest, count(*) AS total FROM dupes GROUP BY digest HAVING total > 1"
 			") AS total USING (digest) "
-			"ORDER BY total DESC, digest, path";
+			"ORDER BY total DESC, digest, last_modified, path";
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
 		if (IS_SQL_ERROR(error)) {
 			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
@@ -476,6 +476,7 @@ void dupes_show (DupesCtx *ctx) {
 		int rc;
 		const unsigned char* digest;
 		const unsigned char* path;
+		const unsigned char* last_modified;
 		int size;
 
 		rc = sqlite3_step(ctx->stmt_select);
@@ -494,8 +495,9 @@ void dupes_show (DupesCtx *ctx) {
 
 				--total;
 				path = sqlite3_column_text(ctx->stmt_select, 2);
-				size = sqlite3_column_int(ctx->stmt_select, 3);
-				printf("%s %s %d\n", total ? "|-" : "`-", path, size);
+				last_modified = sqlite3_column_text(ctx->stmt_select, 3);
+				size = sqlite3_column_int(ctx->stmt_select, 4);
+				printf("%s %s %d %s\n", total ? "|-" : "`-", path, size, last_modified);
 				++rows;
 			break;
 
