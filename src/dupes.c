@@ -78,6 +78,8 @@ void dupes_show (DupesCtx *ctx);
 static
 int dupes_usage (void);
 
+static
+char *dupes_size_human_readable (size_t bytes);
 
 int main (int argc, char *argv[]) {	char *digest;
 	size_t i;
@@ -478,12 +480,12 @@ void dupes_show (DupesCtx *ctx) {
 		const unsigned char* path;
 		const unsigned char* last_modified;
 		int size;
+		char *size_human;
 
 		rc = sqlite3_step(ctx->stmt_select);
 		switch (rc) {
 			case SQLITE_ROW:
 				/* Record found */
-
 				digest = sqlite3_column_text(ctx->stmt_select, 1);
 				if (total == 0) {
 					const unsigned char* digest;
@@ -497,7 +499,14 @@ void dupes_show (DupesCtx *ctx) {
 				path = sqlite3_column_text(ctx->stmt_select, 2);
 				last_modified = sqlite3_column_text(ctx->stmt_select, 3);
 				size = sqlite3_column_int(ctx->stmt_select, 4);
-				printf("%s %s %d %s\n", total ? "|-" : "`-", path, size, last_modified);
+				size_human = dupes_size_human_readable(size);
+				if (size_human != NULL) {
+					printf("%s %s %s %s\n", total ? "|-" : "`-", path, size_human, last_modified);
+					free(size_human);
+				}
+				else {
+					printf("%s %s %d %s\n", total ? "|-" : "`-", path, size, last_modified);
+				}
 				++rows;
 			break;
 
@@ -515,6 +524,36 @@ void dupes_show (DupesCtx *ctx) {
 			break;
 		}
 	}
+}
+
+static
+char *dupes_size_human_readable (size_t bytes) {
+	const char* units [] = {
+		"B",
+		"KB",
+		"MB",
+		"GB",
+		"TB",
+	};
+	const char *unit;
+	double size = (double) bytes;
+	char *buffer = NULL;
+	int count = 0;
+
+	unit = units[count++];
+	while (size > 1024) {
+		size /= 1024.0;
+		unit = units[count++];
+	}
+
+	if (count == 1) {
+		asprintf(&buffer, "%d%s", bytes, unit);
+	}
+	else {
+		asprintf(&buffer, "%.1f%s", size, unit);
+	}
+
+	return buffer;
 }
 
 
