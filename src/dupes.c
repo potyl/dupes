@@ -53,6 +53,7 @@
 
 
 struct _DupesCtx {
+	const char *db_file;
 	sqlite3 *db;
 	sqlite3_stmt *stmt_insert;
 	sqlite3_stmt *stmt_select;
@@ -89,11 +90,13 @@ int dupes_usage (void);
 static
 char *dupes_size_human_readable (size_t bytes);
 
-int main (int argc, char *argv[]) {	char *digest;
+int main (int argc, char *argv[]) {
+	char *digest;
 	size_t i;
 	DupesCtx ctx = {0, };
 	int rc;
-	struct option longopts[] = {
+	struct option longopts [] = {
+		{ "db",         required_argument, NULL, 'd' },
 		{ "zero",       no_argument,       NULL, 'z' },
 		{ "show",       no_argument,       NULL, 's' },
 		{ "replace",    no_argument,       NULL, 'r' },
@@ -102,8 +105,13 @@ int main (int argc, char *argv[]) {	char *digest;
 		{ NULL, 0, NULL, 0 },
 	};
 
-	while ( (rc = getopt_long(argc, argv, "srzhv", longopts, NULL)) != -1 ) {
+	ctx.db_file = DB_FILE;
+	while ( (rc = getopt_long(argc, argv, "dzsrhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
+			case 'd':
+				ctx.db_file = optarg;
+			break;
+
 			case 'z':
 				ctx.keep_zero_size = 1;
 			break;
@@ -180,7 +188,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	char *error_str;
 
 
-	error = sqlite3_open_v2(DB_FILE, &ctx->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+	error = sqlite3_open_v2(ctx->db_file, &ctx->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if (IS_SQL_ERROR(error)) {
 		printf("Can't open database: %s\n", DB_FILE);
 		return 1;
@@ -570,7 +578,8 @@ int dupes_usage() {
 	printf(
 		"Usage: " PACKAGE_NAME " [OPTION]... FOLDER... FILE...\n"
 		"Where OPTION is one of:\n"
-		"   --show,         -s     show digests with duplicates\n"
+		"   --db=DB,        -d DB  which database to use\n"
+		"   --show,         -s     show duplicate files\n"
 		"   --replace,      -r     replace existing digest\n"
 		"   --zero,         -z     process empty files\n"
 		"   --version,      -v     show the program's version\n"
