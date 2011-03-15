@@ -31,9 +31,17 @@
 
 #include <sys/dir.h>
 #include <sys/param.h>
-#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+
+#ifdef __MAC_OS_X_VERSION_MIN_REQUIRED
+	#define _DARWIN_USE_64_BIT_INODE 1
+	#include <sys/stat.h>
+	#define stat64 stat
+#else
+	#include <sys/stat.h>
+#endif
+
 
 #include <openssl/md5.h>
 #include <sqlite3.h>
