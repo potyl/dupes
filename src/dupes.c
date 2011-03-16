@@ -44,6 +44,7 @@
 
 
 #include <openssl/md5.h>
+#include <openssl/sha.h>
 #include <sqlite3.h>
 
 #include "config.h"
@@ -60,6 +61,8 @@ struct _DupesCtx {
 	int replace;
 	int show;
 	int keep_zero_size;
+	char* (*compute_digest_func)(const char *, size_t);
+	const char* digest_name;
 };
 
 typedef struct _DupesCtx DupesCtx;
@@ -76,7 +79,10 @@ static
 void dupes_walk_folder (DupesCtx *ctx, const char *dirname);
 
 static
-char* dupes_compute_digest (const char *filename, size_t buffer_size);
+char* dupes_compute_md5 (const char *filename, size_t buffer_size);
+
+static
+char* dupes_compute_sha1 (const char *filename, size_t buffer_size);
 
 static
 void dupes_insert_digest (DupesCtx *ctx, const char *filename);
@@ -97,31 +103,45 @@ int main (int argc, char *argv[]) {
 	int rc;
 	struct option longopts [] = {
 		{ "db",         required_argument, NULL, 'd' },
+		{ "md5",        no_argument,       NULL, 'm' },
+		{ "sha1",       no_argument,       NULL, 's' },
 		{ "zero",       no_argument,       NULL, 'z' },
-		{ "show",       no_argument,       NULL, 's' },
+		{ "list",       no_argument,       NULL, 'l' },
 		{ "replace",    no_argument,       NULL, 'r' },
 		{ "help",       no_argument,       NULL, 'h' },
 		{ "version",    no_argument,       NULL, 'v' },
 		{ NULL, 0, NULL, 0 },
 	};
 
+	ctx.compute_digest_func = dupes_compute_md5;
+	ctx.digest_name = "MD5";
 	ctx.db_file = DB_FILE;
-	while ( (rc = getopt_long(argc, argv, "dzsrhv", longopts, NULL)) != -1 ) {
+	while ( (rc = getopt_long(argc, argv, "dmszlrhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
 			case 'd':
 				ctx.db_file = optarg;
+			break;
+
+			case 'm':
+				ctx.compute_digest_func = dupes_compute_md5;
+				ctx.digest_name = "MD5";
+			break;
+
+			case 's':
+				ctx.compute_digest_func = dupes_compute_sha1;
+				ctx.digest_name = "SHA1";
 			break;
 
 			case 'z':
 				ctx.keep_zero_size = 1;
 			break;
 
-			case 'r':
-				ctx.replace = 1;
+			case 'l':
+				ctx.show = 1;
 			break;
 
-			case 's':
-				ctx.show = 1;
+			case 'r':
+				ctx.replace = 1;
 			break;
 
 			case 'h':
@@ -394,7 +414,7 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	strftime(last_modified, sizeof(last_modified), "%Y-%m-%d %H:%M:%S", &time_tm);
 
 	/* Compute the digest */
-	digest = dupes_compute_digest(filename, stat_data.st_blksize);
+	digest = ctx->compute_digest_func(filename, stat_data.st_blksize);
 	if (digest == NULL) {return;}
 
 
@@ -427,7 +447,7 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	}
 
 
-	printf("MD5 (%s) = %s\n", filename, digest);
+	printf("%s (%s) = %s\n", ctx->digest_name, filename, digest);
 
 	/* Query execution */
 	rc = sqlite3_step(ctx->stmt_insert);
@@ -438,12 +458,12 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 
 
 QUIT:
-	if (digest) {free(digest);}
+	if (digest != NULL) {free(digest);}
 }
 
 
 static
-char* dupes_compute_digest (const char *filename, size_t buffer_size) {
+char* dupes_compute_md5 (const char *filename, size_t buffer_size) {
 	MD5_CTX digest_ctx;
 	unsigned char digest[MD5_DIGEST_LENGTH];
 	char *digest_hex;
@@ -474,7 +494,48 @@ char* dupes_compute_digest (const char *filename, size_t buffer_size) {
 	/* Transform the binary digest into a human readable string */
 	digest_hex = (char *) malloc(sizeof(digest) * 2 + 1);
 	digest_ptr = digest_hex;
-	for (i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+	for (i = 0; i < sizeof(digest); ++i) {
+		sprintf(digest_ptr, "%02x", digest[i]);
+		digest_ptr += 2;
+	}
+
+	return digest_hex;
+}
+
+
+static
+char* dupes_compute_sha1 (const char *filename, size_t buffer_size) {
+	SHA_CTX digest_ctx;
+	unsigned char digest[SHA_DIGEST_LENGTH];
+	char *digest_hex;
+	char *digest_ptr;
+	char *buffer;
+	size_t i;
+	ssize_t count;
+	int fd;
+
+	/* Compute the digest of the file */
+	SHA1_Init(&digest_ctx);
+
+	fd = open(filename, O_RDONLY);
+	if (fd == -1) {
+		printf("Failed to open %s\n", filename);
+		return NULL;
+	}
+
+	buffer = malloc(buffer_size);
+	while ( (count = read(fd, buffer, buffer_size)) > 0 ) {
+		SHA1_Update(&digest_ctx, buffer, count);
+	}
+	close(fd);
+	free(buffer);
+
+	SHA1_Final(digest, &digest_ctx);
+
+	/* Transform the binary digest into a human readable string */
+	digest_hex = (char *) malloc(sizeof(digest) * 2 + 1);
+	digest_ptr = digest_hex;
+	for (i = 0; i < sizeof(digest); ++i) {
 		sprintf(digest_ptr, "%02x", digest[i]);
 		digest_ptr += 2;
 	}
@@ -579,7 +640,9 @@ int dupes_usage() {
 		"Usage: " PACKAGE_NAME " [OPTION]... FOLDER... FILE...\n"
 		"Where OPTION is one of:\n"
 		"   --db=DB,        -d DB  which database to use\n"
-		"   --show,         -s     show duplicate files\n"
+		"   --md5,          -m     use MD5 as the digest\n"
+		"   --sha1,         -s     use SHA1 as the digest\n"
+		"   --list,         -l     list duplicate files\n"
 		"   --replace,      -r     replace existing digest\n"
 		"   --zero,         -z     process empty files\n"
 		"   --version,      -v     show the program's version\n"
