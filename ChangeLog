@@ -1,3 +1,9 @@
+0.0.5 Thu Mar 17 09:05:53 CET 2011
+	- Show human readable file sizes.
+	- Add the flag --db DB, which allows the caller to change the db file.
+	- Add the options --md5 and --sha1 and rename --show to --list.
+	- Fix OS X compilation warnings.
+
 0.0.4 Sun Apr 25 00:14:28 CEST 2010
 	- Add the option --zero which allows empty files to be indexed.
 	- Add the last modification time to each file.
