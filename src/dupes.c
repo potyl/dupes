@@ -1,4 +1,4 @@
-/* dupes.c - Find duplicate keys by comparing their digest.
+/* dupes.c - Find duplicate files by comparing their digest.
  *
  * Copyright (C) 2010 Emmanuel Rodriguez <emmanuel.rodriguez@gmail.com>.
  *
