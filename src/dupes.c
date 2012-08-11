@@ -53,6 +53,7 @@
 #define IS_SQL_ERROR(error) ((error) == SQLITE_ERROR)
 
 
+typedef struct _DupesCtx DupesCtx;
 struct _DupesCtx {
 	const char *db_file;
 	sqlite3 *db;
@@ -61,11 +62,13 @@ struct _DupesCtx {
 	int replace;
 	int show;
 	int keep_zero_size;
-	char* (*compute_digest_func)(const char *, size_t);
-	const char* digest_name;
+	int (*compute_digest_func)(unsigned char *, int fd, char *, size_t);
+	const char    *digest_name;
+	unsigned char *digest_bin;
+	char          *digest_hex;
+	size_t        file_buffer_size;
+	char          *file_buffer;
 };
-
-typedef struct _DupesCtx DupesCtx;
 
 
 /* Prototypes */
@@ -79,10 +82,10 @@ static
 void dupes_walk_folder (DupesCtx *ctx, const char *dirname);
 
 static
-char* dupes_compute_md5 (const char *filename, size_t buffer_size);
+int dupes_compute_md5 (unsigned char *, int fd, char *buffer, size_t buffer_size);
 
 static
-char* dupes_compute_sha1 (const char *filename, size_t buffer_size);
+int dupes_compute_sha1 (unsigned char *, int fd, char *buffer, size_t buffer_size);
 
 static
 void dupes_insert_digest (DupesCtx *ctx, const char *filename);
@@ -113,8 +116,7 @@ int main (int argc, char *argv[]) {
 		{ NULL, 0, NULL, 0 },
 	};
 
-	ctx.compute_digest_func = dupes_compute_md5;
-	ctx.digest_name = "MD5";
+	ctx.compute_digest_func = NULL;
 	ctx.db_file = DB_FILE;
 	while ( (rc = getopt_long(argc, argv, "dmszlrhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
@@ -123,13 +125,14 @@ int main (int argc, char *argv[]) {
 			break;
 
 			case 'm':
-				ctx.compute_digest_func = dupes_compute_md5;
-				ctx.digest_name = "MD5";
+				ctx.compute_digest_func = NULL;
 			break;
 
 			case 's':
 				ctx.compute_digest_func = dupes_compute_sha1;
 				ctx.digest_name = "SHA1";
+				ctx.digest_bin = malloc(SHA_DIGEST_LENGTH + 1);
+				ctx.digest_hex = malloc(SHA_DIGEST_LENGTH * 2 + 1);
 			break;
 
 			case 'z':
@@ -161,11 +164,19 @@ int main (int argc, char *argv[]) {
 		return dupes_usage();
 	}
 
+	if (ctx.compute_digest_func == NULL) {
+		ctx.digest_name = "MD5";
+		ctx.compute_digest_func = dupes_compute_md5;
+		ctx.digest_bin = malloc(MD5_DIGEST_LENGTH + 1);
+		ctx.digest_hex = malloc(MD5_DIGEST_LENGTH * 2 + 1);
+	}
+
+	ctx.file_buffer_size = 1024;
+	ctx.file_buffer = malloc(ctx.file_buffer_size);
+	if (ctx.file_buffer == NULL) goto QUIT;
 
 	rc = dupes_ctx_init(&ctx);
-	if (rc) {
-		goto QUIT;
-	}
+	if (rc) goto QUIT;
 
 	if (ctx.show) {
 		dupes_show(&ctx);
@@ -303,6 +314,21 @@ void dupes_ctx_finalize (DupesCtx *ctx) {
 		sqlite3_close(ctx->db);
 		ctx->db = NULL;
 	}
+
+	if (ctx->digest_bin != NULL) {
+		free(ctx->digest_bin);
+		ctx->digest_bin = NULL;
+	}
+
+	if (ctx->digest_hex != NULL) {
+		free(ctx->digest_hex);
+		ctx->digest_hex = NULL;
+	}
+
+	if (ctx->file_buffer != NULL) {
+		free(ctx->file_buffer);
+		ctx->file_buffer = NULL;
+	}
 }
 
 
@@ -365,6 +391,9 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	int result;
 	struct tm time_tm;
 	char last_modified[20];
+	size_t i;
+	int fd;
+	size_t buffer_size;
 
 	/** If we don't replace existing values then we can avoid to compute the
 	    digest if we have it already in the DB */
@@ -413,9 +442,39 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	gmtime_r(&stat_data.st_mtimespec.tv_sec, &time_tm);
 	strftime(last_modified, sizeof(last_modified), "%Y-%m-%d %H:%M:%S", &time_tm);
 
+
+	/*
+	   Always prefer to use the buffer size reported by stat(). If we can't
+	   allocate a buffer big enough then we default to the current allocated
+	   buffer size.
+	 */
+	buffer_size = stat_data.st_blksize;
+	if (ctx->file_buffer_size < stat_data.st_blksize) {
+		void *ptr;
+		ptr = realloc(ctx->file_buffer, stat_data.st_blksize);
+		if (ptr != NULL) {
+			ctx->file_buffer = (char *) ptr;
+			ctx->file_buffer_size = buffer_size = stat_data.st_blksize;
+		}
+	}
+
 	/* Compute the digest */
-	digest = ctx->compute_digest_func(filename, stat_data.st_blksize);
-	if (digest == NULL) {return;}
+	fd = open(filename, O_RDONLY);
+	if (fd == -1) {
+		printf("Failed to open %s\n", filename);
+		return;
+	}
+	rc = ctx->compute_digest_func(ctx->digest_bin, fd, ctx->file_buffer, buffer_size);
+	close(fd);
+	if (rc) {return;}
+
+	/* Transform the digest into HEX */
+    digest = ctx->digest_hex;
+    for (i = 0; i < sizeof(ctx->digest_bin); ++i) {
+        sprintf(digest, "%02x", ctx->digest_bin[i]);
+        digest += 2;
+    }
+    digest = ctx->digest_hex;
 
 
 	sqlite3_reset(ctx->stmt_insert);
@@ -425,25 +484,25 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	rc = sqlite3_bind_text(ctx->stmt_insert, 1, filename, -1, SQLITE_STATIC);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter path: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
-		goto QUIT;
+		return;
 	}
 
 	rc = sqlite3_bind_text(ctx->stmt_insert, 2, digest, -1, SQLITE_STATIC);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter digest: %s; error: %d, %s\n", digest, rc, sqlite3_errmsg(ctx->db));
-		goto QUIT;
+		return;
 	}
 
 	rc = sqlite3_bind_int(ctx->stmt_insert, 3, stat_data.st_size);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter size: %s; error: %d, %s\n", filename, rc, sqlite3_errmsg(ctx->db));
-		goto QUIT;
+		return;
 	}
 
 	rc = sqlite3_bind_text(ctx->stmt_insert, 4, last_modified, -1, SQLITE_STATIC);
 	if (IS_SQL_ERROR(rc)) {
 		printf("Failed to bind parameter last_modified: %s; error: %d, %s\n", last_modified, rc, sqlite3_errmsg(ctx->db));
-		goto QUIT;
+		return;
 	}
 
 
@@ -453,94 +512,42 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	rc = sqlite3_step(ctx->stmt_insert);
 	if (rc != SQLITE_DONE) {
 		printf("Failed to insert digest: %s, path: %s; error: %d, %s\n", digest, filename, rc, sqlite3_errmsg(ctx->db));
-		goto QUIT;
+		return;
 	}
-
-
-QUIT:
-	if (digest != NULL) {free(digest);}
 }
 
 
 static
-char* dupes_compute_md5 (const char *filename, size_t buffer_size) {
+int dupes_compute_md5 (unsigned char *digest_bin, int fd, char *buffer, size_t buffer_size) {
 	MD5_CTX digest_ctx;
-	unsigned char digest[MD5_DIGEST_LENGTH];
-	char *digest_hex;
-	char *digest_ptr;
-	char *buffer;
-	size_t i;
 	ssize_t count;
-	int fd;
 
 	/* Compute the digest of the file */
 	MD5_Init(&digest_ctx);
 
-	fd = open(filename, O_RDONLY);
-	if (fd == -1) {
-		printf("Failed to open %s\n", filename);
-		return NULL;
-	}
-
-	buffer = malloc(buffer_size);
 	while ( (count = read(fd, buffer, buffer_size)) > 0 ) {
 		MD5_Update(&digest_ctx, buffer, count);
 	}
-	close(fd);
-	free(buffer);
 
-	MD5_Final(digest, &digest_ctx);
-
-	/* Transform the binary digest into a human readable string */
-	digest_hex = (char *) malloc(sizeof(digest) * 2 + 1);
-	digest_ptr = digest_hex;
-	for (i = 0; i < sizeof(digest); ++i) {
-		sprintf(digest_ptr, "%02x", digest[i]);
-		digest_ptr += 2;
-	}
-
-	return digest_hex;
+	MD5_Final(digest_bin, &digest_ctx);
+	return 0;
 }
 
 
 static
-char* dupes_compute_sha1 (const char *filename, size_t buffer_size) {
+int dupes_compute_sha1 (unsigned char *digest_bin, int fd, char *buffer, size_t buffer_size) {
 	SHA_CTX digest_ctx;
-	unsigned char digest[SHA_DIGEST_LENGTH];
-	char *digest_hex;
-	char *digest_ptr;
-	char *buffer;
-	size_t i;
 	ssize_t count;
-	int fd;
 
 	/* Compute the digest of the file */
 	SHA1_Init(&digest_ctx);
 
-	fd = open(filename, O_RDONLY);
-	if (fd == -1) {
-		printf("Failed to open %s\n", filename);
-		return NULL;
-	}
-
-	buffer = malloc(buffer_size);
 	while ( (count = read(fd, buffer, buffer_size)) > 0 ) {
 		SHA1_Update(&digest_ctx, buffer, count);
 	}
-	close(fd);
-	free(buffer);
 
-	SHA1_Final(digest, &digest_ctx);
-
-	/* Transform the binary digest into a human readable string */
-	digest_hex = (char *) malloc(sizeof(digest) * 2 + 1);
-	digest_ptr = digest_hex;
-	for (i = 0; i < sizeof(digest); ++i) {
-		sprintf(digest_ptr, "%02x", digest[i]);
-		digest_ptr += 2;
-	}
-
-	return digest_hex;
+	SHA1_Final(digest_bin, &digest_ctx);
+	return 0;
 }
 
 
