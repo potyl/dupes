@@ -237,7 +237,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	sql = "PRAGMA synchronous=OFF; PRAGMA count_changes=OFF;";
 	sqlite3_exec(ctx->db, sql, NULL, NULL, &error_str);
 	if (error_str != NULL) {
-		printf("Failed to create the dubes table; error: %s\n", error_str);
+		printf("Failed to set db pragmas; error: %s\n", error_str);
 		sqlite3_free(error_str);
 		return 1;
 	}
