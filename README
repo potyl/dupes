@@ -1,10 +1,10 @@
 Description
 ===========
 
-dupes is an utility that can helps to find duplicate files. It does so by
-computing a digest (currently MD5) for each file and storing it in a SQLite3
-database (dupes.db). This database can later be queried for finding duplicate
-files with the same program or through sqlite3.
+dupes is an utility that can help to find duplicate files. It does so by
+computing a digest (defaults MD5 although SH1 can also be used) for each file
+and storing it in a SQLite3 database (dupes.db). This database can later be
+queried for finding duplicate files with the same program or through sqlite3.
 
 
 Building
