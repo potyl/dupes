@@ -70,6 +70,7 @@ struct _DupesCtx {
 	int keep_zero_size;
 	int (*compute_digest_func)(unsigned char *, int fd, char *, size_t);
 	const char    *digest_name;
+	size_t         digest_bin_len;
 	unsigned char *digest_bin;
 	char          *digest_hex;
 	size_t        file_buffer_size;
@@ -131,14 +132,14 @@ int main (int argc, char *argv[]) {
 			break;
 
 			case 'm':
+				/* Will be defined later on */
 				ctx.compute_digest_func = NULL;
 			break;
 
 			case 's':
 				ctx.compute_digest_func = dupes_compute_sha1;
 				ctx.digest_name = "SHA1";
-				ctx.digest_bin = malloc(SHA_DIGEST_LENGTH + 1);
-				ctx.digest_hex = malloc(SHA_DIGEST_LENGTH * 2 + 1);
+				ctx.digest_bin_len = SHA_DIGEST_LENGTH;
 			break;
 
 			case 'z':
@@ -173,9 +174,10 @@ int main (int argc, char *argv[]) {
 	if (ctx.compute_digest_func == NULL) {
 		ctx.digest_name = "MD5";
 		ctx.compute_digest_func = dupes_compute_md5;
-		ctx.digest_bin = malloc(MD5_DIGEST_LENGTH + 1);
-		ctx.digest_hex = malloc(MD5_DIGEST_LENGTH * 2 + 1);
+		ctx.digest_bin_len = MD5_DIGEST_LENGTH;
 	}
+	ctx.digest_bin = malloc(ctx.digest_bin_len + 1);
+	ctx.digest_hex = malloc(ctx.digest_bin_len * 2 + 1);
 
 	ctx.file_buffer_size = 1024;
 	ctx.file_buffer = malloc(ctx.file_buffer_size);
@@ -476,7 +478,7 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 
 	/* Transform the digest into HEX */
     digest = ctx->digest_hex;
-    for (i = 0; i < sizeof(ctx->digest_bin); ++i) {
+    for (i = 0; i < ctx->digest_bin_len; ++i) {
         sprintf(digest, "%02x", ctx->digest_bin[i]);
         digest += 2;
     }
