@@ -624,7 +624,7 @@ char *dupes_size_human_readable (size_t bytes) {
 	}
 
 	if (count == 1) {
-		asprintf(&buffer, "%d%s", bytes, unit);
+		asprintf(&buffer, "%zu%s", bytes, unit);
 	}
 	else {
 		asprintf(&buffer, "%.1f%s", size, unit);
