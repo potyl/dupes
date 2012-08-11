@@ -42,12 +42,18 @@
 	#include <sys/stat.h>
 #endif
 
-
 #include <openssl/md5.h>
 #include <openssl/sha.h>
 #include <sqlite3.h>
 
 #include "config.h"
+
+#ifdef HAVE_STRUCT_STAT_ST_MTIMESPEC_TV_SEC
+	#ifndef st_mtime
+		#define st_mtime st_mtimespec.tv_sec
+	#endif
+#endif
+
 
 #define DB_FILE PACKAGE_NAME ".db"
 #define IS_SQL_ERROR(error) ((error) == SQLITE_ERROR)
@@ -439,7 +445,7 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 		return;
 	}
 
-	gmtime_r(&stat_data.st_mtimespec.tv_sec, &time_tm);
+	gmtime_r(&stat_data.st_mtime, &time_tm);
 	strftime(last_modified, sizeof(last_modified), "%Y-%m-%d %H:%M:%S", &time_tm);
 
 

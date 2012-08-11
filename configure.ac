@@ -16,6 +16,7 @@ AC_PROG_MAKE_SET
 PKG_CHECK_MODULES(OPENSSL, [openssl >= 0.9.8])
 PKG_CHECK_MODULES(SQLITE3, [sqlite3 >= 3.6.16])
 
+AC_CHECK_MEMBERS([struct stat.st_mtimespec.tv_sec])
 
 # Make sure we keep ACLOCAL_FLAGS around for maintainer builds to work
 AC_SUBST(ACLOCAL_AMFLAGS, "$ACLOCAL_FLAGS -I m4")
