@@ -125,7 +125,7 @@ int main (int argc, char *argv[]) {
 
 	ctx.compute_digest_func = NULL;
 	ctx.db_file = DB_FILE;
-	while ( (rc = getopt_long(argc, argv, "dmszlrhv", longopts, NULL)) != -1 ) {
+	while ( (rc = getopt_long(argc, argv, "d:mszlrhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
 			case 'd':
 				ctx.db_file = optarg;
