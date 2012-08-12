@@ -107,7 +107,6 @@ static
 char *dupes_size_human_readable (size_t bytes);
 
 int main (int argc, char *argv[]) {
-	char *digest;
 	size_t i;
 	DupesCtx ctx = {0, };
 	int rc;
