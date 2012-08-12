@@ -1,3 +1,8 @@
+0.0.6 Sun Aug 12 09:23:36 CEST 2012
+	- Fix compilation under Linux.
+	- Fix the flag -d, wasn't receiving the argument.
+	- Rewrite of the digest functions to use precomputed buffers (less memory management).
+
 0.0.5 Thu Mar 17 09:05:53 CET 2011
 	- Show human readable file sizes.
 	- Add the flag --db DB, which allows the caller to change the db file.
