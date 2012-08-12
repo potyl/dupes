@@ -59,6 +59,12 @@
 #define IS_SQL_ERROR(error) ((error) == SQLITE_ERROR)
 
 
+typedef enum _DupesSortBy {
+	DUPES_SORT_BY_SIZE = 1,
+	DUPES_SORT_BY_COUNT,
+} DupesSortBy;
+
+
 typedef struct _DupesCtx DupesCtx;
 struct _DupesCtx {
 	const char *db_file;
@@ -76,6 +82,7 @@ struct _DupesCtx {
 	size_t        file_buffer_size;
 	char          *file_buffer;
 	unsigned int  total_added;
+	DupesSortBy   sort_by;
 };
 
 
@@ -117,6 +124,8 @@ int main (int argc, char *argv[]) {
 		{ "sha1",       no_argument,       NULL, 's' },
 		{ "zero",       no_argument,       NULL, 'z' },
 		{ "list",       no_argument,       NULL, 'l' },
+		{ "sort-size",  no_argument,       NULL, 'S' },
+		{ "sort-count", no_argument,       NULL, 'C' },
 		{ "replace",    no_argument,       NULL, 'r' },
 		{ "help",       no_argument,       NULL, 'h' },
 		{ "version",    no_argument,       NULL, 'v' },
@@ -125,10 +134,18 @@ int main (int argc, char *argv[]) {
 
 	ctx.compute_digest_func = NULL;
 	ctx.db_file = DB_FILE;
-	while ( (rc = getopt_long(argc, argv, "d:mszlrhv", longopts, NULL)) != -1 ) {
+	while ( (rc = getopt_long(argc, argv, "d:mszlSCrhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
 			case 'd':
 				ctx.db_file = optarg;
+			break;
+
+			case 'S':
+				ctx.sort_by = DUPES_SORT_BY_SIZE;
+			break;
+
+			case 'C':
+				ctx.sort_by = DUPES_SORT_BY_COUNT;
 			break;
 
 			case 'm':
@@ -167,6 +184,7 @@ int main (int argc, char *argv[]) {
 	argc -= optind;
 	argv += optind;
 
+	if (ctx.sort_by) ctx.show = 1;
 	if (argc == 0 && ! ctx.show) {
 		return dupes_usage();
 	}
@@ -177,7 +195,9 @@ int main (int argc, char *argv[]) {
 		ctx.digest_bin_len = MD5_DIGEST_LENGTH;
 	}
 	ctx.digest_bin = malloc(ctx.digest_bin_len + 1);
+	if (ctx.digest_bin == NULL) goto QUIT;
 	ctx.digest_hex = malloc(ctx.digest_bin_len * 2 + 1);
+	if (ctx.digest_hex == NULL) goto QUIT;
 
 	ctx.file_buffer_size = 1024;
 	ctx.file_buffer = malloc(ctx.file_buffer_size);
@@ -258,7 +278,8 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	}
 
 	if (ctx->show) {
-		sql =
+		char *sql_sort_by;
+		char *sql_fmt =
 			"SELECT "
 			"   total.total, "
 			"   dupes.digest, dupes.path, last_modified, dupes.size "
@@ -266,8 +287,29 @@ int dupes_ctx_init (DupesCtx *ctx) {
 			"INNER JOIN ( "
 			"  SELECT digest, count(*) AS total FROM dupes GROUP BY digest HAVING total > 1"
 			") AS total USING (digest) "
-			"ORDER BY total DESC, digest, last_modified, path";
+			"ORDER BY %s, digest, last_modified, path"
+		;
+		switch (ctx->sort_by) {
+			case DUPES_SORT_BY_SIZE:
+				sql_sort_by = "size DESC, total DESC";
+			break;
+
+			case DUPES_SORT_BY_COUNT:
+				sql_sort_by = "total DESC, size DESC";
+			break;
+
+			default:
+				printf("Unknown sort type: %d\n", ctx->sort_by);
+				return 1;
+			break;
+		}
+		asprintf(&sql, sql_fmt, sql_sort_by);
+		if (sql == NULL) {
+			printf("Can't allocate memory for search query\n");
+			return 1;
+		}
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
+		free(sql);
 		if (IS_SQL_ERROR(error)) {
 			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
 			return 1;
@@ -660,6 +702,8 @@ int dupes_usage() {
 		"   --md5,          -m     use MD5 as the digest\n"
 		"   --sha1,         -s     use SHA1 as the digest\n"
 		"   --list,         -l     list duplicate files\n"
+		"   --sort-size     -S     sort results by file size\n"
+		"   --sort-count    -C     sort results by number of dupes\n"
 		"   --replace,      -r     replace existing digest\n"
 		"   --zero,         -z     process empty files\n"
 		"   --version,      -v     show the program's version\n"
