@@ -75,6 +75,7 @@ struct _DupesCtx {
 	char          *digest_hex;
 	size_t        file_buffer_size;
 	char          *file_buffer;
+	unsigned int  total_added;
 };
 
 
@@ -209,7 +210,7 @@ int main (int argc, char *argv[]) {
 			dupes_insert_digest(&ctx, path);
 		}
 	}
-
+	printf("Indexed %u files\n", ctx.total_added);
 
 QUIT:
 	dupes_ctx_finalize(&ctx);
@@ -521,6 +522,8 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 		printf("Failed to insert digest: %s, path: %s; error: %d, %s\n", digest, filename, rc, sqlite3_errmsg(ctx->db));
 		return;
 	}
+
+	++ctx->total_added;
 }
 
 
