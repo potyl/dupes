@@ -6,7 +6,7 @@ if [ -e /opt/local/share/aclocal ]; then
 	includes="-I /opt/local/share/aclocal"
 fi
 
-aclocal $includes --force
+aclocal $includes -I m4 --force
 autoconf --force
 autoheader --force
 automake --add-missing --copy --force-missing
