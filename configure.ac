@@ -14,7 +14,7 @@ AC_LANG_WERROR
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
-AX_CHECK_CFLAGS([-Wall -pedantic])
+AX_CHECK_CFLAGS([-Wall -pedantic -pedantic-errors])
 
 # Libraries
 PKG_CHECK_MODULES(OPENSSL, [openssl >= 0.9.8])
