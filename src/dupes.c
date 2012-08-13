@@ -305,12 +305,13 @@ int dupes_ctx_init (DupesCtx *ctx) {
 			break;
 		}
 		rc = asprintf(&sql, sql_fmt, sql_sort_by);
-		if (sql != NULL) free(sql);
 		if (rc == -1 || sql == NULL) {
+		    if (sql != NULL) free(sql);
 			printf("Can't allocate memory for search query\n");
 			return 1;
 		}
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
+		if (sql != NULL) free(sql);
 		if (IS_SQL_ERROR(error)) {
 			printf("Can't prepare select statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
 			return 1;
