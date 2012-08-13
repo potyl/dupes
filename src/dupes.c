@@ -464,7 +464,7 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 			break;
 
 			case SQLITE_DONE:
-        		/* Record not found (empty result set); we continue in the function */
+				/* Record not found (empty result set); we continue in the function */
 			break;
 
 			default:
@@ -520,12 +520,12 @@ void dupes_insert_digest (DupesCtx *ctx, const char *filename) {
 	if (rc) {return;}
 
 	/* Transform the digest into HEX */
-    digest = ctx->digest_hex;
-    for (i = 0; i < ctx->digest_bin_len; ++i) {
-        sprintf(digest, "%02x", ctx->digest_bin[i]);
-        digest += 2;
-    }
-    digest = ctx->digest_hex;
+	digest = ctx->digest_hex;
+	for (i = 0; i < ctx->digest_bin_len; ++i) {
+		sprintf(digest, "%02x", ctx->digest_bin[i]);
+		digest += 2;
+	}
+	digest = ctx->digest_hex;
 
 
 	sqlite3_reset(ctx->stmt_insert);
