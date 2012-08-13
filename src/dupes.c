@@ -278,6 +278,7 @@ int dupes_ctx_init (DupesCtx *ctx) {
 	}
 
 	if (ctx->show) {
+		int rc;
 		char *sql_sort_by;
 		char *sql_fmt =
 			"SELECT "
@@ -303,13 +304,13 @@ int dupes_ctx_init (DupesCtx *ctx) {
 				return 1;
 			break;
 		}
-		asprintf(&sql, sql_fmt, sql_sort_by);
-		if (sql == NULL) {
+		rc = asprintf(&sql, sql_fmt, sql_sort_by);
+		if (sql != NULL) free(sql);
+		if (rc == -1 || sql == NULL) {
 			printf("Can't allocate memory for search query\n");
 			return 1;
 		}
 		error = sqlite3_prepare_v2(ctx->db, sql, -1, &ctx->stmt_select, NULL);
-		free(sql);
 		if (IS_SQL_ERROR(error)) {
 			printf("Can't prepare statement: %s; error code: %d %s\n", sql, error, sqlite3_errmsg(ctx->db));
 			return 1;
@@ -673,6 +674,7 @@ char *dupes_size_human_readable (size_t bytes) {
 	double size = (double) bytes;
 	char *buffer = NULL;
 	int count = 0;
+	int rc;
 
 	unit = units[count++];
 	while (size > 1024) {
@@ -681,11 +683,12 @@ char *dupes_size_human_readable (size_t bytes) {
 	}
 
 	if (count == 1) {
-		asprintf(&buffer, "%zu%s", bytes, unit);
+		rc = asprintf(&buffer, "%zu%s", bytes, unit);
 	}
 	else {
-		asprintf(&buffer, "%.1f%s", size, unit);
+		rc = asprintf(&buffer, "%.1f%s", size, unit);
 	}
+	if (rc == -1) return NULL;
 
 	return buffer;
 }
