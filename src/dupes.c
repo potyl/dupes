@@ -612,7 +612,6 @@ void dupes_show (DupesCtx *ctx) {
 	sqlite3_reset(ctx->stmt_select);
 	while (! done) {
 		int rc;
-		const unsigned char* digest;
 		const unsigned char* path;
 		const unsigned char* last_modified;
 		int size;
@@ -622,7 +621,6 @@ void dupes_show (DupesCtx *ctx) {
 		switch (rc) {
 			case SQLITE_ROW:
 				/* Record found */
-				digest = sqlite3_column_text(ctx->stmt_select, 1);
 				if (total == 0) {
 					const unsigned char* digest;
 					total = sqlite3_column_int(ctx->stmt_select, 0);
