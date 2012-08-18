@@ -60,7 +60,8 @@
 
 
 typedef enum _DupesSortBy {
-	DUPES_SORT_BY_SIZE = 1,
+	DUPES_SORT_NONE = 0,
+	DUPES_SORT_BY_SIZE,
 	DUPES_SORT_BY_COUNT,
 } DupesSortBy;
 
@@ -134,6 +135,7 @@ int main (int argc, char *argv[]) {
 
 	ctx.compute_digest_func = NULL;
 	ctx.db_file = DB_FILE;
+	ctx.sort_by = DUPES_SORT_NONE;
 	while ( (rc = getopt_long(argc, argv, "d:mszlSCrhv", longopts, NULL)) != -1 ) {
 		switch (rc) {
 			case 'd':
@@ -185,6 +187,10 @@ int main (int argc, char *argv[]) {
 	argv += optind;
 
 	if (ctx.sort_by) ctx.show = 1;
+	else if (ctx.show && ctx.sort_by == DUPES_SORT_NONE) {
+		ctx.sort_by = DUPES_SORT_BY_COUNT;
+	}
+
 	if (argc == 0 && ! ctx.show) {
 		return dupes_usage();
 	}
